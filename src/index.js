@@ -3,29 +3,18 @@ import 'material-icons';
 import 'bootstrap'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import 'bootstrap-material-design/dist/css/bootstrap-material-design.min.css'
+import { getAssistantMessage } from './armando-ai';
 
-import OpenAI from 'openai'; 
 
-const openai = new OpenAI({apiKey: '', dangerouslyAllowBrowser: true });
 
 (function() {
     var chatSubmit = document.querySelector("#chat-submit");
-    chatSubmit.addEventListener("click", function(e) {
-      e.preventDefault();
-      var msg = document.querySelector("#chat-input").value;
-      if (msg.trim() == "") {
-        return false;
-      }
-      
-      generate_message(msg, "user");
-      getChatReponse(msg);
-    });
+    chatSubmit.addEventListener("click", function(e) {sendMessage(e)});
 
 
     var storedKey = localStorage.getItem('openaiKey');
     if (storedKey && storedKey.trim() != "") {
         document.querySelector("#api-input").value = storedKey;
-        openai.apiKey = storedKey;
     }
 
     var settingsSubmit = document.querySelector("#settings-submit");
@@ -39,7 +28,6 @@ const openai = new OpenAI({apiKey: '', dangerouslyAllowBrowser: true });
         }
 
         localStorage.setItem('openaiKey', openaiKey)
-        openai.apiKey = openaiKey;
       });
   
   
@@ -98,25 +86,31 @@ const openai = new OpenAI({apiKey: '', dangerouslyAllowBrowser: true });
     });
   })();
   
+  async function sendMessage(e) {
+    e.preventDefault();
+    var msg = document.querySelector("#chat-input").value;
+    if (msg.trim() == "") {
+      return false;
+    }
+    
+    generate_message(msg, "user");
+    var assistantMessage = await getAssistantMessage(msg, getMessageHistory());
+    generate_message(assistantMessage.content.replaceAll('\n','<br/>'), assistantMessage.role);
+  }
   
   var INDEX = 0;
   function generate_message(msg, type) {
     INDEX++;
+
     var str = "";
     str += "<div id='cm-msg-" + INDEX + "' class='chat-msg " + type + "'>";
-    
-    str += "          <div class='cm-msg-text'>";
+    str += "  <div class='cm-msg-text'>";
     str += msg;
-    str += "          </div>";
-    str += "        </div>";
-    // select the chat-logs element by its class name and append the string as HTML
+    str += "  </div>";
+    str += "</div>";
     document.querySelector(".chat-logs").innerHTML += str;
-    // select the cm-msg element by its id and hide it with style display none
-    document.querySelector("#cm-msg-" + INDEX).style.display = "none";
-    // use setTimeout to fade in the cm-msg element with style display block
-    setTimeout(function() {
-      document.querySelector("#cm-msg-" + INDEX).style.display = "block";
-    }, 300);
+    document.querySelector("#cm-msg-" + INDEX).style.display = "block";
+    
     if (type == "user") {
       // select the chat-input element by its id and set its value to empty
       document.querySelector("#chat-input").value = "";
@@ -127,29 +121,22 @@ const openai = new OpenAI({apiKey: '', dangerouslyAllowBrowser: true });
   }
   
   function getMessageHistory() {
-    // Lista todos elementos de mensagens
-    var chatTextElements = document.querySelectorAll('.cm-msg-text');
-    var messages = [];
-    chatTextElements.forEach(element => {
-        messages.push({
-            content: element.innerHTML.trim(),
-            role: element.parentElement.classList[1]
-        })
-    });
+    // Janela deslizante de histórico 
+    const maxHistory = 50;
+    let historyWindow = 0;
+    if (INDEX > maxHistory) {
+      historyWindow = INDEX - maxHistory;
+    }
+    
+    var messages = new Array();
+    for (let i = INDEX-1; i > historyWindow; i--) {
+      var msgElement = document.querySelector('#cm-msg-' + i);
+      
+      messages.push({
+        content: msgElement.children[0].innerHTML,
+        role: msgElement.classList[1]
+      })
+    }
 
-    // TODO desenvolver método de janela deslizante para controlar uso de tokens
-    return messages;
-}
-
-async function getChatReponse (msg) {
-    const chatParams = {
-        model: "gpt-3.5-turbo", // The model to use
-        messages: getMessageHistory(),
-        temperature: 0.5, // The randomness of the completion
-        frequency_penalty: 0.1, // The penalty for repeating words or phrases
-        presence_penalty: 0.1 // The penalty for mentioning new entities
-    };
-
-    const completion = await openai.chat.completions.create(chatParams);
-    generate_message(completion.choices[0].message.content.replaceAll('\n','<br/>'), completion.choices[0].message.role);
+    return messages.reverse();
 }
